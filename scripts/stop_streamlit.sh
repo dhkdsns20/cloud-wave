@@ -1,8 +1,8 @@
 #!/bin/bash
-# APP_Name=streamlit
+APP_Name="streamlit"
 APP_PID=$(pgrep streamlit)
 
-if [ -z $APP_PID ]
+if [ -z "$APP_PID" ]
 then
   echo "Application is not running"
 else
