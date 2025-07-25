@@ -6,5 +6,5 @@ def get_db_connection():
         database='trip_advisor',
         user='user',
         password='qwer1234'
-    )
+    )##
     return conn
