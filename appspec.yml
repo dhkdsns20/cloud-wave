@@ -6,11 +6,10 @@ files:
     runas: root
 file_exists_behavior: OVERWRITE
 hooks:
-  ApplicationStop:
-    - location: scripts/stop_streamlit.sh
-      runas: root
-    # - location: scripts/stop_applications.sh
-      timeout: 10
+  # ApplicationStop:
+  #   - location: scripts/stop_streamlit.sh
+  #   # - location: scripts/stop_applications.sh
+  #     timeout: 10
   ApplicationStart:
     - location: scripts/start_streamlit.sh
     # - location: scripts/start_applications.sh

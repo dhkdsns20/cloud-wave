@@ -50,3 +50,13 @@ jobs:
             --deployment-group-name lab-edu-cd-deploygroup \
             --deployment-config-name CodeDeployDefault.OneAtATime \
             --github-location repository=${{ github.repository }},commitId=${{ github.sha }}
+
+      # Step 3
+      - name: Create CodeDeploy Deployment (ASG)
+        id: deploy-asg
+        run: |
+          aws deploy create-deployment \
+            --application-name lab-edu-cd-application-streamlit \
+            --deployment-group-name lab-edu-cd-deploygroup-asg \
+            --deployment-config-name CodeDeployDefault.OneAtATime \
+            --github-location repository=${{ github.repository }},commitId=${{ github.sha }}

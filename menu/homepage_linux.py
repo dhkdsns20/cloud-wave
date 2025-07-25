@@ -74,7 +74,7 @@ class Homepage:
             time.sleep(1)
 
     def homepage(self):
-        st.title("AWS EC2 Information")
+        st.title("AWS AutoScalingGroup EC2 Information")
         # Monitoring and Load Button ----------
         col1, col2, col3 = st.columns([1, 1, 8])
         with col1:
@@ -93,54 +93,105 @@ class Homepage:
             
             
         # EC2 Information area --------------------------------
-        st.header('EC2 Instance Information', divider = "gray")
+        st.header('AutoScalingGroup Instance Information', divider = "gray")
         
-        # GET EC2 Instance Information TABLE format
+        # AutoScaling Group에서 인스턴스 목록 가져오기
         token = self.get_token()
         region = self.get_instance_metadata(token, "placement/region")
         ec2_client = boto3.client('ec2', region_name=region)
-        instance_id = self.get_instance_metadata(token, "instance-id")
-        name_tag = self.get_instance_name_tag(ec2_client, instance_id)
-        metadata_info = {
-            "Name": name_tag,
-            "Instance ID": self.get_instance_metadata(token, "instance-id"),
-            "Instance Type": self.get_instance_metadata(token, "instance-type"),
-            "Region": region,
-            "Availability Zone": self.get_instance_metadata(token, "placement/availability-zone"),
-            "Private IP": self.get_instance_metadata(token, "local-ipv4"),
-            "Public IP": self.get_instance_metadata(token, "public-ipv4"),
-        }
-        # GET EC2 Instance Information TEXT format
-        instance_id=self.get_instance_metadata(token, "instance-id")
-        instance_type=self.get_instance_metadata(token, "instance-type")
-        instance_region=self.get_instance_metadata(token, "placement/region")
-        instance_availability_zone=self.get_instance_metadata(token, "placement/availability-zone")
-        instance_private_ip=self.get_instance_metadata(token, "local-ipv4")
-        instance_public_ip=self.get_instance_metadata(token, "public-ipv4")
-        instance_name = self.get_instance_name_tag(ec2_client, instance_id)
-        df = pd.DataFrame(list(metadata_info.items()), columns=['Metadata', 'Value'])
-        st.table(df)
+        autoscaling_client = boto3.client('autoscaling', region_name=region)
+        asg_name = "lab-edu-asg-web"
+            
+        instances_info = []
+        try:
+            asg_response = autoscaling_client.describe_auto_scaling_groups(
+                AutoScalingGroupNames=[asg_name]
+            )
+            
+            if not asg_response['AutoScalingGroups']:
+                st.error(f"Unable to retrieve instance information.")
+                return
+            
+            # ASG의 인스턴스 ID 목록 추출
+            asg_instances = asg_response['AutoScalingGroups'][0]['Instances']
+            instance_ids = [instance['InstanceId'] for instance in asg_instances if instance['LifecycleState'] == 'InService']
+            
+            if not instance_ids:
+                st.warning(f"Unable to retrieve instance information.")
+                return
+            
+            # EC2 인스턴스 세부 정보 가져오기
+            ec2_response = ec2_client.describe_instances(InstanceIds=instance_ids)
+            
+            for reservation in ec2_response['Reservations']:
+                for instance in reservation['Instances']:
+                    instance_name = "N/A"
+                    if 'Tags' in instance:
+                        for tag in instance['Tags']:
+                            if tag['Key'] == 'Name':
+                                instance_name = tag['Value']
+                                break
+                    
+                    # 인스턴스 정보 수집
+                    instance_info = {
+                        "Name": instance_name,
+                        "Instance ID": instance['InstanceId'],
+                        "Instance Type": instance['InstanceType'],
+                        "State": instance['State']['Name'],
+                        "Availability Zone": instance['Placement']['AvailabilityZone'],
+                        "Private IP": instance.get('PrivateIpAddress', 'N/A'),
+                        "Public IP": instance.get('PublicIpAddress', 'N/A'),
+                        "Launch Time": instance['LaunchTime'].strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                    instances_info.append(instance_info)
+            
+            # DataFrame 생성 및 테이블 출력
+            if instances_info:
+                df = pd.DataFrame(instances_info)
+                st.subheader(f"EC2 Information Table: {asg_name}")
+                st.table(df)
+            else:
+                st.warning("Unable to retrieve instance information.")
+
+        except Exception as e:
+            st.error(f"Error Message: {str(e)}")
+            st.info("Replace with current instance information.")
+            current_instance_id = self.get_instance_metadata(token, "instance-id")
+            name_tag = self.get_instance_name_tag(ec2_client, current_instance_id)
+            metadata_info = {
+                "Name": name_tag,
+                "Instance ID": current_instance_id,
+                "Instance Type": self.get_instance_metadata(token, "instance-type"),
+                "Region": region,
+                "Availability Zone": self.get_instance_metadata(token, "placement/availability-zone"),
+                "Private IP": self.get_instance_metadata(token, "local-ipv4"),
+                "Public IP": self.get_instance_metadata(token, "public-ipv4"),
+            }
+            df = pd.DataFrame(list(metadata_info.items()), columns=['Metadata', 'Value'])
+            st.table(df)
         
 
         # EBS Volume Information area --------------------------
-        st.header('Storage Information Table', divider = "gray")
+        st.subheader(f'EBS Information Table: {asg_name}')
         
         # GET EBS Information TABLE format
-        volumes = ec2_client.describe_volumes(Filters=[{'Name': 'attachment.instance-id', 'Values': [instance_id]}])
         volume_data = []
-        for volume in volumes['Volumes']:
-            # volume_metadata_info = {}
-            volume_data.append({
-                'Instance ID': instance_id,
-                'Volume ID': volume['VolumeId'],
-                'Type': volume['VolumeType'],
-                'Size (GB)': volume['Size'],
-                'State': volume['State'],
-                'Snapshot ID': volume.get('SnapshotId', 'N/A'),
-                'IOPS': volume.get('Iops', 'N/A'),
-                'Encrypted': volume['Encrypted'],
-                'Creation Date': volume['CreateTime'].strftime('%Y-%m-%d %H:%M:%S')
-            })
+        for instance_info in instances_info:
+            instance_id = instance_info['Instance ID']
+            volumes = ec2_client.describe_volumes(Filters=[{'Name': 'attachment.instance-id', 'Values': [instance_id]}])
+            for volume in volumes['Volumes']:
+                # volume_metadata_info = {}
+                volume_data.append({
+                    'Instance ID': instance_id,
+                    'Volume ID': volume['VolumeId'],
+                    'Type': volume['VolumeType'],
+                    'Size (GB)': volume['Size'],
+                    'State': volume['State'],
+                    'Snapshot ID': volume.get('SnapshotId', 'N/A'),
+                    'IOPS': volume.get('Iops', 'N/A'),
+                    'Encrypted': volume['Encrypted'],
+                    'Creation Date': volume['CreateTime'].strftime('%Y-%m-%d %H:%M:%S')
+                })
         st.table(volume_data)
 
         with placeholder_button.container():
